@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Multi-Part XML Combiner (Upload Version)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    input[type="file"], button {
+      padding: 10px;
+      margin: 10px 0;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Upload XML Parts to Combine into One Score</h1>
+
+  <label for="xmlInput">Upload multiple XML part files:</label>
+  <input type="file" id="xmlInput" accept=".xml" multiple />
+
+  <button id="combineButton">Combine and Download XML</button>
+
+  <script>
+    document.getElementById("combineButton").addEventListener("click", async () => {
+      const files = document.getElementById("xmlInput").files;
+
+      if (files.length === 0) {
+        alert("Please upload at least one XML file.");
+        return;
+      }
+
+      const xmlFiles = [];
+
+      for (let file of files) {
+        const text = await file.text();
+
+        const match = text.match(/<score-part id="(P\d+)"/);
+        if (!match) {
+          alert(`Could not find <score-part id="..."> in file: ${file.name}`);
+          return;
+        }
+
+        const partId = match[1];
+        xmlFiles.push({ name: file.name, text, partId });
+      }
+
+      // Sort files by part number (P1, P2, etc.)
+      xmlFiles.sort((a, b) => {
+        const aNum = parseInt(a.partId.replace("P", ""));
+        const bNum = parseInt(b.partId.replace("P", ""));
+        return aNum - bNum;
+      });
+
+      let combinedXml = xmlFiles[0].text.replace(/<\/score-partwise>\s*$/, "");
+
+      for (let i = 1; i < xmlFiles.length; i++) {
+        const { text, partId } = xmlFiles[i];
+
+        const scorePartMatch = text.match(new RegExp(`<score-part id="${partId}">[\\s\\S]*?<\\/score-part>`));
+        if (scorePartMatch) {
+          const insertIndex = combinedXml.lastIndexOf("</score-part>") + "</score-part>".length;
+          combinedXml = combinedXml.slice(0, insertIndex) + "\n" + scorePartMatch[0] + combinedXml.slice(insertIndex);
+        }
+
+        const partMatch = text.match(new RegExp(`<part id="${partId}">[\\s\\S]*?<\\/part>`));
+        if (partMatch) {
+          const insertIndex = combinedXml.lastIndexOf("</part>") + "</part>".length;
+          combinedXml = combinedXml.slice(0, insertIndex) + "\n" + partMatch[0] + combinedXml.slice(insertIndex);
+        }
+      }
+
+      combinedXml += "\n</score-partwise>";
+
+      const blob = new Blob([combinedXml], { type: "application/xml" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "combined_score.xml";
+      link.click();
+    });
+  </script>
+</body>
+</html>
